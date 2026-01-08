@@ -54,41 +54,101 @@ st.markdown("""
 # --- [STEP 1] 시각적 요소 먼저 렌더링 (로딩 화면 역할) ---
 
 # 3D 헤더 HTML 정의
+# --- [UI 상단] 3D 조형물 및 타이틀 (모바일 대응 강화) ---
 header_html = """
-<div id="dashboard-container" style="width: 100%; background: transparent; color: white; padding: 10px; font-family: sans-serif;">
-    <h1 style="text-align: center; color: #ffffff; font-size: 4.5rem; font-weight: 800; margin-bottom: 10px; letter-spacing: -2px;">
+<style>
+    /* 기본 데스크탑 스타일 */
+    .title-text {
+        text-align: center; 
+        color: #ffffff; 
+        font-size: 4.5rem; 
+        font-weight: 800; 
+        margin-bottom: 10px; 
+        letter-spacing: -2px;
+        line-height: 1.1;
+    }
+    .sub-text {
+        text-align: center; 
+        font-size: 1.4rem; 
+        color: #94a3b8; 
+        margin-bottom: 0px;
+    }
+    #canvas-container {
+        width: 100%; 
+        height: 450px; 
+        display: flex; 
+        justify-content: center;
+    }
+
+    /* 모바일 대응 (화면 너비 768px 이하) */
+    @media (max-width: 768px) {
+        .title-text {
+            font-size: 2.2rem !important; /* 폰트 크기 축소 */
+            letter-spacing: -1px !important;
+        }
+        .sub-text {
+            font-size: 1.0rem !important; /* 부제목 크기 축소 */
+            padding: 0 10px;
+        }
+        #canvas-container {
+            height: 300px !important; /* 조형물 높이 축소 */
+        }
+    }
+</style>
+
+<div style="width: 100%; background: transparent; padding: 10px; font-family: sans-serif; overflow: hidden;">
+    <h1 class="title-text">
         DanielNeeds<span style="color: #ff4b4b;">Chajjick</span>
     </h1>
-    <p style="text-align: center; font-size: 1.4rem; color: #94a3b8; margin-bottom: 0px;">
+    <p class="sub-text">
         Currently Studying: <span style="color: #38bdf8; font-weight: bold;">Stochastic Calculus for Finance II</span> by Steven Shreve
     </p>
-    
-    <div id="canvas-container" style="width: 100%; height: 450px; display: flex; justify-content: center;">
+    <div id="canvas-container">
         <script type="module">
             import * as THREE from 'https://cdn.skypack.dev/three@0.132.2';
+            const container = document.getElementById('canvas-container');
             const scene = new THREE.Scene();
-            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / 450, 0.1, 1000);
+            
+            // 컨테이너 크기에 맞게 카메라 및 렌더러 설정
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            
+            const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
             const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-            renderer.setSize(window.innerWidth > 1000 ? 1000 : window.innerWidth, 450);
-            document.getElementById('canvas-container').appendChild(renderer.domElement);
+            renderer.setSize(width, height);
+            container.appendChild(renderer.domElement);
 
-            const geometry = new THREE.TorusKnotGeometry(2.2, 0.7, 200, 32);
+            const geometry = new THREE.TorusKnotGeometry(2.0, 0.6, 200, 32);
             const material = new THREE.MeshNormalMaterial({ wireframe: false });
             const torusKnot = new THREE.Mesh(geometry, material);
             scene.add(torusKnot);
-            camera.position.z = 6;
+            camera.position.z = 5.5;
 
             function animate() {
                 requestAnimationFrame(animate);
-                torusKnot.rotation.x += 0.01;
-                torusKnot.rotation.y += 0.015;
+                torusKnot.rotation.x += 0.015;
+                torusKnot.rotation.y += 0.02;
                 renderer.render(scene, camera);
             }
             animate();
+
+            // 창 크기 조절 시 대응
+            window.addEventListener('resize', () => {
+                const newWidth = container.clientWidth;
+                const newHeight = container.clientHeight;
+                camera.aspect = newWidth / newHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(newWidth, newHeight);
+            });
         </script>
     </div>
 </div>
 """
+
+# HTML 컴포넌트 출력 (모바일에서 높이가 너무 남지 않도록 조정)
+# st.sidebar 등이 있는 경우 너비가 바뀔 수 있으므로 use_container_width는 지원 안되지만 
+# CSS에서 width: 100%를 주었으므로 안정적입니다.
+components.html(header_html, height=550) # 데스크탑 기준 높이, 모바일에서는 CSS가 내부에서 조절
 
 # 상단 제목과 3D 조형물을 즉시 표시
 st.title("")
