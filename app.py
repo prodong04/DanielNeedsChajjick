@@ -152,7 +152,6 @@ components.html(header_html, height=550) # 데스크탑 기준 높이, 모바일
 
 # 상단 제목과 3D 조형물을 즉시 표시
 st.title("")
-components.html(header_html, height=600)
 
 # --- [STEP 2] 데이터 로딩 (백그라운드 처리 느낌으로) ---
 
