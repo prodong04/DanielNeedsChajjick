@@ -165,7 +165,7 @@ done_pages = float(study_df['Pages'].sum()) if not study_df.empty else 0.0
 progress = min(done_pages / TOTAL_PAGES, 1.0)
 
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("누적 채찍질 경험 ", f"{total_visitors:.0f} 회")
+m1.metric("방문자 수 ", f"{total_visitors:.0f} 회")
 m2.metric("총 공부량 ", f"{done_pages:.1f} / {TOTAL_PAGES:.1f} p")
 m3.metric("진행도 ", f"{progress*100:.1f} %")
 m4.metric("남은 페이지 ", f"{max(TOTAL_PAGES - done_pages, 0.0):.1f} p")
