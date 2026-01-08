@@ -2,152 +2,176 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import datetime
+import plotly.graph_objects as go
 import streamlit.components.v1 as components
 
-# 1. 페이지 설정
-st.set_page_config(page_title="dongryeolneedschajjick", layout="wide")
+# 1. 페이지 설정 및 디자인
+st.set_page_config(page_title="Daniel Study Tracker", layout="wide")
 
-# --- CSS 스타일 수정 (가독성 향상 및 색상 변경) ---
 st.markdown("""
     <style>
-    /* 전체 배경 및 기본 텍스트 색상 */
     .main { background-color: #000000; color: #ffffff; }
     .stApp { background-color: #000000; }
+    h1, h2, h3, p, span { color: #ffffff !important; text-align: center; }
     
-    /* 제목 색상 변경 (민트 -> 화이트) */
-    h1, h2, h3 { color: #ffffff !important; text-align: center; }
-    
-    /* Metric (통계 수치) 가독성 향상 */
-    [data-testid="stMetricLabel"] { color: #bbbbbb !important; } /* 레이블은 약간 회색으로 구분 */
-    [data-testid="stMetricValue"] { color: #ffffff !important; font-size: 2rem !important; } /* 값은 밝고 크게 */
-    
-    /* Progress Bar 색상 변경 (화이트) */
-    .stProgress > div > div > div > div { background-color: #ffffff; }
-    
-    /* 댓글 박스 디자인 변경 */
-    .comment-box {
-        background-color: #111111; padding: 15px; border-radius: 10px;
-        border-left: 5px solid #ffffff; /* 테두리 화이트 */
-        margin-bottom: 10px;
+    /* 채찍질 섹션 전용 스타일 */
+    .chajjick-header {
+        color: #ff4b4b !important;
+        font-weight: 800 !important;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        margin-top: 50px;
+        text-shadow: 0 0 10px rgba(255, 75, 75, 0.5);
     }
-    .comment-nickname { color: #ffffff; font-weight: bold; } /* 닉네임 화이트 */
-    .comment-date { color: #888888; font-size: 0.8em; }
     
-    /* 입력 폼 글자색 */
-    .stTextInput > div > div > input { color: #ffffff; }
-    .stTextArea > div > div > textarea { color: #ffffff; }
+    .comment-box {
+        background-color: #0a0a0a; 
+        padding: 20px; 
+        border-radius: 10px;
+        border: 1px solid #333333;
+        border-left: 5px solid #ff4b4b; /* 채찍 레드 포인트 */
+        margin-bottom: 15px; 
+        text-align: left;
+        transition: 0.3s;
+    }
+    .comment-box:hover {
+        border-color: #ff4b4b;
+        box-shadow: 0 0 15px rgba(255, 75, 75, 0.2);
+    }
+    
+    [data-testid="stMetricLabel"] { color: #bbbbbb !important; }
+    [data-testid="stMetricValue"] { color: #ffffff !important; font-size: 2.8rem !important; }
+    .stProgress > div > div > div > div { background-color: #ff4b4b; } /* 진행바도 레드 포인트 */
+    
+    input, textarea { background-color: #111 !important; color: white !important; border: 1px solid #333 !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. 구글 시트 연결 설정
-# 본인의 구글 시트 공유 링크(편집 권한 포함)를 아래에 붙여넣으세요!
-url = "https://docs.google.com/spreadsheets/d/1EqPYrlRnb5pOk4H_ekTAc5tBSnJWEvUfQgugaY1T3Lw/edit?usp=sharing"
-try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-except Exception as e:
-    st.error(f"구글 시트 연결 오류: {e}. URL과 권한을 확인해주세요.")
-    st.stop()
+# 2. 구글 시트 연결
+conn = st.connection("gsheets", type=GSheetsConnection)
+SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
-# 데이터 불러오기 함수
-def get_data():
+def get_all_data():
     try:
-        study_df = conn.read(spreadsheet=url, worksheet="Study")
-        comment_df = conn.read(spreadsheet=url, worksheet="Comments")
-        return study_df.dropna(how='all'), comment_df.dropna(how='all')
-    except Exception:
-        # 시트가 비어있거나 없을 경우 빈 DataFrame 반환
-        return pd.DataFrame(columns=['Date', 'Pages']), pd.DataFrame(columns=['Date', 'Nickname', 'Password', 'Content'])
+        s_df = conn.read(spreadsheet=SHEET_URL, worksheet="Study", ttl=0).dropna(how='all')
+        c_df = conn.read(spreadsheet=SHEET_URL, worksheet="Comments", ttl=0).dropna(how='all')
+        return s_df, c_df
+    except Exception as e:
+        st.error(f"데이터 로드 실패: {e}")
+        return pd.DataFrame(columns=['Date', 'Pages']), pd.DataFrame(columns=['Date', 'Nickname', 'Content'])
 
-study_df, comment_df = get_data()
+study_df, comment_df = get_all_data()
 
-# --- UI 레이아웃 ---
-st.title("dongryeolneedschajjick")
+# 데이터 가공
+study_df['Pages'] = pd.to_numeric(study_df['Pages'], errors='coerce').fillna(0).astype(float)
+if not study_df.empty:
+    study_df['Date'] = pd.to_datetime(study_df['Date']).dt.date
+    study_df = study_df.sort_values('Date')
+    study_df['Cumulative'] = study_df['Pages'].cumsum().astype(float)
 
-# 회전하는 지구 (Three.js)
-earth_html = """
-<div id="container" style="width: 100%; height: 350px; background: black; display: flex; justify-content: center;">
-    <script type="module">
-        import * as THREE from 'https://cdn.skypack.dev/three@0.132.2';
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / 350, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ alpha: true });
-        renderer.setSize(window.innerWidth, 350);
-        document.getElementById('container').appendChild(renderer.domElement);
-        const geometry = new THREE.SphereGeometry(2, 32, 32);
-        const texture = new THREE.TextureLoader().load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg');
-        const material = new THREE.MeshPhongMaterial({ map: texture, shininess: 5 });
-        const earth = new THREE.Mesh(geometry, material);
-        scene.add(earth);
-        const light = new THREE.DirectionalLight(0xffffff, 1);
-        light.position.set(5, 3, 5).normalize();
-        scene.add(light);
-        camera.position.z = 5;
-        function animate() { requestAnimationFrame(animate); earth.rotation.y += 0.005; renderer.render(scene, camera); }
-        animate();
-    </script>
+# --- UI 섹션 ---
+# 3D 헤더 (Chajjick 부분에 레드 포인트 추가)
+header_html = """
+<div id="dashboard-container" style="width: 100%; background: transparent; color: white; padding: 10px; font-family: sans-serif;">
+    <h1 style="text-align: center; color: #ffffff; font-size: 4.5rem; font-weight: 800; margin-bottom: 10px; letter-spacing: -2px;">
+        DanielNeeds<span style="color: #ff4b4b;">Chajjick</span>
+    </h1>
+    <p style="text-align: center; font-size: 1.4rem; color: #94a3b8; margin-bottom: 0px;">
+        Currently Studying: <span style="color: #38bdf8; font-weight: bold;">Stochastic Calculus for Finance II</span> by Steven Shreve
+    </p>
+    
+    <div id="canvas-container" style="width: 100%; height: 450px; display: flex; justify-content: center;">
+        <script type="module">
+            import * as THREE from 'https://cdn.skypack.dev/three@0.132.2';
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / 450, 0.1, 1000);
+            const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            renderer.setSize(window.innerWidth > 1000 ? 1000 : window.innerWidth, 450);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            const geometry = new THREE.TorusKnotGeometry(2.2, 0.7, 200, 32);
+            const material = new THREE.MeshNormalMaterial({ wireframe: false });
+            const torusKnot = new THREE.Mesh(geometry, material);
+            scene.add(torusKnot);
+            camera.position.z = 6;
+
+            function animate() {
+                requestAnimationFrame(animate);
+                torusKnot.rotation.x += 0.01;
+                torusKnot.rotation.y += 0.015;
+                renderer.render(scene, camera);
+            }
+            animate();
+        </script>
+    </div>
 </div>
 """
-components.html(earth_html, height=350)
+components.html(header_html, height=600)
 
-# 통계 계산
-total_pages = 560
-total_done = pd.to_numeric(study_df['Pages'], errors='coerce').sum() if not study_df.empty else 0
-progress_pct = min(total_done / total_pages, 1.0)
+# 진행 지표
+TOTAL_PAGES = 560.0
+done_pages = float(study_df['Pages'].sum()) if not study_df.empty else 0.0
+progress = min(done_pages / TOTAL_PAGES, 1.0)
 
-# 통계 표시 (간격 조정)
-c1, c2, c3 = st.columns(3, gap="large")
-c1.metric("총 공부량", f"{int(total_done)} / {total_pages} p")
-c2.metric("진행도", f"{progress_pct*100:.1f} %")
-c3.metric("남은 페이지", f"{max(total_pages - int(total_done), 0)} p")
+m1, m2, m3 = st.columns(3)
+m1.metric("총 공부량 ", f"{done_pages:.1f} / {TOTAL_PAGES:.1f} p")
+m2.metric("진행도 ", f"{progress*100:.1f} %")
+m3.metric("남은 페이지 ", f"{max(TOTAL_PAGES - done_pages, 0.0):.1f} p")
+st.progress(progress)
 
-st.progress(progress_pct)
+# 그래프 섹션
+st.write("")
+if not study_df.empty:
+    g1, g2 = st.columns(2)
+    with g1:
+        st.subheader("📊 Daily Progress")
+        fig1 = go.Figure(go.Bar(x=study_df['Date'], y=study_df['Pages'], marker_color='#ffffff'))
+        fig1.update_layout(paper_bgcolor='black', plot_bgcolor='black', font_color='white', height=400)
+        st.plotly_chart(fig1, use_container_width=True)
+    with g2:
+        st.subheader("📈 Total Progress")
+        fig2 = go.Figure(go.Scatter(x=study_df['Date'], y=study_df['Cumulative'], fill='tozeroy', line_color='#ffffff'))
+        fig2.update_layout(paper_bgcolor='black', plot_bgcolor='black', font_color='white', height=400)
+        st.plotly_chart(fig2, use_container_width=True)
 
-# 3. 관리자 패널 (비밀번호: 1234)
-st.sidebar.title("🔐 Admin")
-admin_pw = st.sidebar.text_input("관리자 비번", type="password")
+# --- 채찍질(방명록) & 로그 섹션 분리 ---
+st.markdown("<h2 class='chajjick-header'>🚨 CHAJJICK ZONE (채찍질 공간)</h2>", unsafe_allow_html=True)
 
-if admin_pw == "000401":
-    st.sidebar.success("관리자 모드 접속")
-    with st.sidebar.form("study_form"):
-        d = st.date_input("날짜", datetime.date.today())
-        p = st.number_input("페이지", min_value=0)
-        if st.form_submit_button("기록 하기"):
-            new_row = pd.DataFrame({"Date": [str(d)], "Pages": [p]})
-            updated_study = pd.concat([study_df, new_row], ignore_index=True)
-            conn.update(spreadsheet=url, worksheet="Study", data=updated_study)
-            st.toast("시트에 기록 되었습니다!", icon="✅")
-            st.rerun()
+# 2단 레이아웃으로 왼쪽은 로그, 오른쪽은 채찍질 폼
+c_log, c_whip = st.columns([1, 1])
 
-# 4. 댓글 섹션
-st.markdown("---")
-st.subheader("💬 chajjick")
+with c_log:
+    st.write("### 📅 Study Log")
+    if not study_df.empty:
+        display_df = study_df.sort_values('Date', ascending=False)[['Date', 'Pages', 'Cumulative']].copy()
+        st.dataframe(display_df, use_container_width=True, height=400)
 
-with st.form("comment_form", clear_on_submit=True):
-    c1, c2 = st.columns(2)
-    nick = c1.text_input("닉네임")
-    pw = c2.text_input("비밀번호", type="password", placeholder="제 맘대로 수정과 삭제가 가능합니다...")
-    msg = st.text_area("내용", placeholder="dongryeolneedschajjick")
-    if st.form_submit_button("댓글 달기"):
-        if nick and msg:
-            new_comm = pd.DataFrame({
-                "Date": [datetime.datetime.now().strftime("%Y-%m-%d %H:%M")],
-                "Nickname": [nick], "Password": [pw], "Content": [msg]
-            })
-            updated_comm = pd.concat([comment_df, new_comm], ignore_index=True)
-            conn.update(spreadsheet=url, worksheet="Comments", data=updated_comm)
-            st.toast("댓글이 등록 되었습니다", icon="🎉")
-            st.rerun()
-        else:
-            st.warning("닉네임과 내용을 입력해주세요.")
+with c_whip:
+    st.write("### Deliver a Whip")
+    with st.form("guest_form", clear_on_submit=True):
+        col_n, col_m = st.columns([1, 2])
+        n_nick = col_n.text_input("채찍 주인 ", placeholder="이름")
+        n_msg = col_m.text_input("채찍질 내용 ", placeholder="공부 안 하냐?")
+        if st.form_submit_button("채찍 휘두르기 "):
+            if n_nick and n_msg:
+                new_data = pd.DataFrame({
+                    "Date": [datetime.datetime.now().strftime("%Y-%m-%d %H:%M")],
+                    "Nickname": [n_nick], "Content": [n_msg]
+                })
+                updated_c = pd.concat([comment_df[['Date', 'Nickname', 'Content']], new_data], ignore_index=True)
+                conn.update(spreadsheet=SHEET_URL, worksheet="Comments", data=updated_c)
+                st.rerun()
 
-# 댓글 출력 (최신순)
-if not comment_df.empty:
-    for idx, row in comment_df.iloc[::-1].iterrows():
-        st.markdown(f"""
-        <div class="comment-box">
-            <span class="comment-nickname">{row['Nickname']}</span> <span class="comment-date">({row['Date']})</span><br>
-            <p style="margin-top:10px;">{row['Content']}</p>
-        </div>
-        """, unsafe_allow_html=True)
-else:
-    st.info("첫 번째 댓글의 주인공이 되어보세요!")
+    # 등록된 채찍질 리스트
+    if not comment_df.empty:
+        st.write("### ⚡ Recent Whips")
+        container = st.container(height=300) # 고정 높이 스크롤 영역
+        with container:
+            for _, row in comment_df.iloc[::-1].iterrows():
+                st.markdown(f"""
+                <div class="comment-box">
+                    <b style="color:#ff4b4b;">{row.get('Nickname', '익명')}</b> 
+                    <small style="color:#888888; float:right;">{row.get('Date', '')}</small><br>
+                    <p style="margin-top:10px; color:#ffffff; font-size:1.1rem;">{row.get('Content', '')}</p>
+                </div>
+                """, unsafe_allow_html=True)
