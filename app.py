@@ -113,7 +113,7 @@ with st.spinner(""):
     study_df, comment_df = get_all_data()
 
     # 데이터 가공
-    study_df['Pages'] = pd.to_numeric(study_df['Pages'], errors='coerce').fillna(0).astype(float)
+    study_df['Pages'] = pd.to_numeric(study_df['Pages'], errors='coerce').fillna(0).astype(int)
     if not study_df.empty:
         study_df['Date'] = pd.to_datetime(study_df['Date']).dt.date
         study_df = study_df.sort_values('Date')
@@ -164,8 +164,8 @@ with c_whip:
     with st.form("guest_form", clear_on_submit=True):
         col_n, col_m = st.columns([1, 2])
         n_nick = col_n.text_input("채찍 주인 ", placeholder="이름")
-        n_msg = col_m.text_input("채찍질 내용 ", placeholder="공부 안 하냐?")
-        if st.form_submit_button("💥 채찍 휘두르기 "):
+        n_msg = col_m.text_input("채찍질 내용 ", placeholder=".")
+        if st.form_submit_button("💥"):
             if n_nick and n_msg:
                 new_data = pd.DataFrame({
                     "Date": [datetime.datetime.now().strftime("%Y-%m-%d %H:%M")],
