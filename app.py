@@ -8,7 +8,7 @@ import streamlit.components.v1 as components
 # 1. 페이지 설정 및 디자인
 st.set_page_config(page_title="Daniel Study Tracker", layout="wide")
 
-# CSS 스타일 설정 (기존 스타일 유지 및 로딩 바 숨김 처리)
+# CSS 스타일 설정
 st.markdown("""
     <style>
     .main { background-color: #000000; color: #ffffff; }
@@ -46,53 +46,29 @@ st.markdown("""
     
     input, textarea { background-color: #111 !important; color: white !important; border: 1px solid #333 !important; }
 
-    /* 로딩 로그/스피너 숨기기 혹은 스타일링 */
+    /* 로딩 로그/스피너 숨기기 */
     div[data-testid="stStatusWidget"] { display: none; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- [STEP 1] 시각적 요소 먼저 렌더링 (로딩 화면 역할) ---
+# --- [STEP 1] 시각적 요소 먼저 렌더링 (로딩 화면 역할 및 모바일 대응) ---
 
-# 3D 헤더 HTML 정의
-# --- [UI 상단] 3D 조형물 및 타이틀 (모바일 대응 강화) ---
 header_html = """
 <style>
-    /* 기본 데스크탑 스타일 */
     .title-text {
-        text-align: center; 
-        color: #ffffff; 
-        font-size: 4.5rem; 
-        font-weight: 800; 
-        margin-bottom: 10px; 
-        letter-spacing: -2px;
-        line-height: 1.1;
+        text-align: center; color: #ffffff; font-size: 4.5rem; font-weight: 800; 
+        margin-bottom: 10px; letter-spacing: -2px; line-height: 1.1;
     }
     .sub-text {
-        text-align: center; 
-        font-size: 1.4rem; 
-        color: #94a3b8; 
-        margin-bottom: 0px;
+        text-align: center; font-size: 1.4rem; color: #94a3b8; margin-bottom: 0px;
     }
     #canvas-container {
-        width: 100%; 
-        height: 450px; 
-        display: flex; 
-        justify-content: center;
+        width: 100%; height: 450px; display: flex; justify-content: center;
     }
-
-    /* 모바일 대응 (화면 너비 768px 이하) */
     @media (max-width: 768px) {
-        .title-text {
-            font-size: 2.2rem !important; /* 폰트 크기 축소 */
-            letter-spacing: -1px !important;
-        }
-        .sub-text {
-            font-size: 1.0rem !important; /* 부제목 크기 축소 */
-            padding: 0 10px;
-        }
-        #canvas-container {
-            height: 300px !important; /* 조형물 높이 축소 */
-        }
+        .title-text { font-size: 2.2rem !important; letter-spacing: -1px !important; }
+        .sub-text { font-size: 1.0rem !important; padding: 0 10px; }
+        #canvas-container { height: 300px !important; }
     }
 </style>
 
@@ -108,11 +84,8 @@ header_html = """
             import * as THREE from 'https://cdn.skypack.dev/three@0.132.2';
             const container = document.getElementById('canvas-container');
             const scene = new THREE.Scene();
-            
-            // 컨테이너 크기에 맞게 카메라 및 렌더러 설정
             const width = container.clientWidth;
             const height = container.clientHeight;
-            
             const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
             const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
             renderer.setSize(width, height);
@@ -131,8 +104,6 @@ header_html = """
                 renderer.render(scene, camera);
             }
             animate();
-
-            // 창 크기 조절 시 대응
             window.addEventListener('resize', () => {
                 const newWidth = container.clientWidth;
                 const newHeight = container.clientHeight;
@@ -144,55 +115,62 @@ header_html = """
     </div>
 </div>
 """
+components.html(header_html, height=550)
 
-# HTML 컴포넌트 출력 (모바일에서 높이가 너무 남지 않도록 조정)
-# st.sidebar 등이 있는 경우 너비가 바뀔 수 있으므로 use_container_width는 지원 안되지만 
-# CSS에서 width: 100%를 주었으므로 안정적입니다.
-components.html(header_html, height=550) # 데스크탑 기준 높이, 모바일에서는 CSS가 내부에서 조절
-
-# 상단 제목과 3D 조형물을 즉시 표시
-st.title("")
-
-# --- [STEP 2] 데이터 로딩 (백그라운드 처리 느낌으로) ---
+# --- [STEP 2] 데이터 및 방문자 카운팅 로직 ---
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
-# 로딩 중임을 알리는 얇은 스피너 (선택 사항, 텍스트 없이 깔끔하게)
+def update_visitors():
+    """방문자 수를 업데이트하고 가져옵니다."""
+    try:
+        stats_df = conn.read(spreadsheet=SHEET_URL, worksheet="Stats", ttl=0)
+        current_val = int(stats_df.loc[stats_df['Metric'] == 'Visitors', 'Value'].values[0])
+        
+        if 'counted' not in st.session_state:
+            new_val = current_val + 1
+            stats_df.loc[stats_df['Metric'] == 'Visitors', 'Value'] = new_val
+            conn.update(spreadsheet=SHEET_URL, worksheet="Stats", data=stats_df)
+            st.session_state.counted = True
+            return float(new_val)
+        return float(current_val)
+    except:
+        return 0.0
+
 with st.spinner(""):
     def get_all_data():
         try:
             s_df = conn.read(spreadsheet=SHEET_URL, worksheet="Study", ttl=0).dropna(how='all')
             c_df = conn.read(spreadsheet=SHEET_URL, worksheet="Comments", ttl=0).dropna(how='all')
-            return s_df, c_df
+            v_count = update_visitors()
+            return s_df, c_df, v_count
         except Exception as e:
             st.error(f"데이터 로드 실패: {e}")
-            return pd.DataFrame(columns=['Date', 'Pages']), pd.DataFrame(columns=['Date', 'Nickname', 'Content'])
+            return pd.DataFrame(), pd.DataFrame(), 0.0
 
-    study_df, comment_df = get_all_data()
+    study_df, comment_df, total_visitors = get_all_data()
 
-    # 데이터 가공
-    study_df['Pages'] = pd.to_numeric(study_df['Pages'], errors='coerce').fillna(0).astype(int)
+    # 데이터 가공 (Float 포맷 유지)
+    study_df['Pages'] = pd.to_numeric(study_df['Pages'], errors='coerce').fillna(0.0).astype(float)
     if not study_df.empty:
         study_df['Date'] = pd.to_datetime(study_df['Date']).dt.date
         study_df = study_df.sort_values('Date')
         study_df['Cumulative'] = study_df['Pages'].cumsum().astype(float)
 
-# --- [STEP 3] 나머지 지표 및 그래프 렌더링 ---
+# --- [STEP 3] 메트릭 및 그래프 ---
 
-# 진행 지표
 TOTAL_PAGES = 560.0
 done_pages = float(study_df['Pages'].sum()) if not study_df.empty else 0.0
 progress = min(done_pages / TOTAL_PAGES, 1.0)
 
-m1, m2, m3 = st.columns(3)
-m1.metric("총 공부량 ", f"{done_pages:.1f} / {TOTAL_PAGES:.1f} p")
-m2.metric("진행도 ", f"{progress*100:.1f} %")
-m3.metric("남은 페이지 ", f"{max(TOTAL_PAGES - done_pages, 0.0):.1f} p")
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("누적 채찍질 경험 ", f"{total_visitors:.0f} 회")
+m2.metric("총 공부량 ", f"{done_pages:.1f} / {TOTAL_PAGES:.1f} p")
+m3.metric("진행도 ", f"{progress*100:.1f} %")
+m4.metric("남은 페이지 ", f"{max(TOTAL_PAGES - done_pages, 0.0):.1f} p")
 st.progress(progress)
 
-# 그래프 섹션
-st.write("")
 if not study_df.empty:
     g1, g2 = st.columns(2)
     with g1:
@@ -208,15 +186,17 @@ if not study_df.empty:
                           xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='#333333'))
         st.plotly_chart(fig2, use_container_width=True)
 
-st.markdown("<h2 class='chajjick-header'>🚨 CHAJJICK ZONE (채찍질 공간)</h2>", unsafe_allow_html=True)
+# --- [STEP 4] CHAJJICK ZONE ---
 
+st.markdown("<h2 class='chajjick-header'>🚨 CHAJJICK ZONE</h2>", unsafe_allow_html=True)
 c_log, c_whip = st.columns([1, 1])
 
 with c_log:
     st.write("### 📅 Study Log")
     if not study_df.empty:
         display_df = study_df.sort_values('Date', ascending=False)[['Date', 'Pages', 'Cumulative']].copy()
-        st.table(display_df)
+        # 테이블 수치 float 포맷팅
+        st.table(display_df.style.format({"Pages": "{:.1f}", "Cumulative": "{:.1f}"}))
 
 with c_whip:
     st.write("### 🧨 Deliver a Whip")
