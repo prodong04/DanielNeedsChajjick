@@ -8,7 +8,7 @@ import streamlit.components.v1 as components
 # 1. 페이지 설정 및 디자인
 st.set_page_config(page_title="Daniel Study Tracker", layout="wide")
 
-# CSS 스타일 설정 (기존 스타일 유지 및 로딩 바 숨김 처리)
+# CSS 스타일 설정
 st.markdown("""
     <style>
     .main { background-color: #000000; color: #ffffff; }
@@ -46,94 +46,132 @@ st.markdown("""
     
     input, textarea { background-color: #111 !important; color: white !important; border: 1px solid #333 !important; }
 
-    /* 로딩 로그/스피너 숨기기 혹은 스타일링 */
+    /* 로딩 로그/스피너 숨기기 */
     div[data-testid="stStatusWidget"] { display: none; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- [STEP 1] 시각적 요소 먼저 렌더링 (로딩 화면 역할) ---
+# --- [STEP 1] 시각적 요소 먼저 렌더링 (로딩 화면 역할 및 모바일 대응) ---
 
-# 3D 헤더 HTML 정의
 header_html = """
-<div id="dashboard-container" style="width: 100%; background: transparent; color: white; padding: 10px; font-family: sans-serif;">
-    <h1 style="text-align: center; color: #ffffff; font-size: 4.5rem; font-weight: 800; margin-bottom: 10px; letter-spacing: -2px;">
+<style>
+    .title-text {
+        text-align: center; color: #ffffff; font-size: 4.5rem; font-weight: 800; 
+        margin-bottom: 10px; letter-spacing: -2px; line-height: 1.1;
+    }
+    .sub-text {
+        text-align: center; font-size: 1.4rem; color: #94a3b8; margin-bottom: 0px;
+    }
+    #canvas-container {
+        width: 100%; height: 450px; display: flex; justify-content: center;
+    }
+    @media (max-width: 768px) {
+        .title-text { font-size: 2.2rem !important; letter-spacing: -1px !important; }
+        .sub-text { font-size: 1.0rem !important; padding: 0 10px; }
+        #canvas-container { height: 300px !important; }
+    }
+</style>
+
+<div style="width: 100%; background: transparent; padding: 10px; font-family: sans-serif; overflow: hidden;">
+    <h1 class="title-text">
         DanielNeeds<span style="color: #ff4b4b;">Chajjick</span>
     </h1>
-    <p style="text-align: center; font-size: 1.4rem; color: #94a3b8; margin-bottom: 0px;">
+    <p class="sub-text">
         Currently Studying: <span style="color: #38bdf8; font-weight: bold;">Stochastic Calculus for Finance II</span> by Steven Shreve
     </p>
-    
-    <div id="canvas-container" style="width: 100%; height: 450px; display: flex; justify-content: center;">
+    <div id="canvas-container">
         <script type="module">
             import * as THREE from 'https://cdn.skypack.dev/three@0.132.2';
+            const container = document.getElementById('canvas-container');
             const scene = new THREE.Scene();
-            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / 450, 0.1, 1000);
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
             const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-            renderer.setSize(window.innerWidth > 1000 ? 1000 : window.innerWidth, 450);
-            document.getElementById('canvas-container').appendChild(renderer.domElement);
+            renderer.setSize(width, height);
+            container.appendChild(renderer.domElement);
 
-            const geometry = new THREE.TorusKnotGeometry(2.2, 0.7, 200, 32);
+            const geometry = new THREE.TorusKnotGeometry(2.0, 0.6, 200, 32);
             const material = new THREE.MeshNormalMaterial({ wireframe: false });
             const torusKnot = new THREE.Mesh(geometry, material);
             scene.add(torusKnot);
-            camera.position.z = 6;
+            camera.position.z = 5.5;
 
             function animate() {
                 requestAnimationFrame(animate);
-                torusKnot.rotation.x += 0.01;
-                torusKnot.rotation.y += 0.015;
+                torusKnot.rotation.x += 0.015;
+                torusKnot.rotation.y += 0.02;
                 renderer.render(scene, camera);
             }
             animate();
+            window.addEventListener('resize', () => {
+                const newWidth = container.clientWidth;
+                const newHeight = container.clientHeight;
+                camera.aspect = newWidth / newHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(newWidth, newHeight);
+            });
         </script>
     </div>
 </div>
 """
+components.html(header_html, height=550)
 
-# 상단 제목과 3D 조형물을 즉시 표시
-st.title("")
-components.html(header_html, height=600)
-
-# --- [STEP 2] 데이터 로딩 (백그라운드 처리 느낌으로) ---
+# --- [STEP 2] 데이터 및 방문자 카운팅 로직 ---
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
-# 로딩 중임을 알리는 얇은 스피너 (선택 사항, 텍스트 없이 깔끔하게)
+def update_visitors():
+    """방문자 수를 업데이트하고 가져옵니다."""
+    try:
+        stats_df = conn.read(spreadsheet=SHEET_URL, worksheet="Stats", ttl=0)
+        current_val = int(stats_df.loc[stats_df['Metric'] == 'Visitors', 'Value'].values[0])
+        
+        if 'counted' not in st.session_state:
+            new_val = current_val + 1
+            stats_df.loc[stats_df['Metric'] == 'Visitors', 'Value'] = new_val
+            conn.update(spreadsheet=SHEET_URL, worksheet="Stats", data=stats_df)
+            st.session_state.counted = True
+            return float(new_val)
+        return float(current_val)
+    except:
+        return 0.0
+
 with st.spinner(""):
     def get_all_data():
         try:
             s_df = conn.read(spreadsheet=SHEET_URL, worksheet="Study", ttl=0).dropna(how='all')
             c_df = conn.read(spreadsheet=SHEET_URL, worksheet="Comments", ttl=0).dropna(how='all')
-            return s_df, c_df
+            v_count = update_visitors()
+            return s_df, c_df, v_count
         except Exception as e:
             st.error(f"데이터 로드 실패: {e}")
-            return pd.DataFrame(columns=['Date', 'Pages']), pd.DataFrame(columns=['Date', 'Nickname', 'Content'])
+            return pd.DataFrame(), pd.DataFrame(), 0.0
 
-    study_df, comment_df = get_all_data()
+    study_df, comment_df, total_visitors = get_all_data()
 
-    # 데이터 가공
-    study_df['Pages'] = pd.to_numeric(study_df['Pages'], errors='coerce').fillna(0).astype(float)
+    # 데이터 가공 (Float 포맷 유지)
+    study_df['Pages'] = pd.to_numeric(study_df['Pages'], errors='coerce').fillna(0.0).astype(float)
     if not study_df.empty:
         study_df['Date'] = pd.to_datetime(study_df['Date']).dt.date
         study_df = study_df.sort_values('Date')
         study_df['Cumulative'] = study_df['Pages'].cumsum().astype(float)
 
-# --- [STEP 3] 나머지 지표 및 그래프 렌더링 ---
+# --- [STEP 3] 메트릭 및 그래프 ---
 
 # 진행 지표
 TOTAL_PAGES = 526.0
 done_pages = float(study_df['Pages'].sum()) if not study_df.empty else 0.0
 progress = min(done_pages / TOTAL_PAGES, 1.0)
 
-m1, m2, m3 = st.columns(3)
-m1.metric("총 공부량 ", f"{done_pages:.1f} / {TOTAL_PAGES:.1f} p")
-m2.metric("진행도 ", f"{progress*100:.1f} %")
-m3.metric("남은 페이지 ", f"{max(TOTAL_PAGES - done_pages, 0.0):.1f} p")
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("방문자 수 ", f"{total_visitors:.0f} 회")
+m2.metric("총 공부량 ", f"{done_pages:.1f} / {TOTAL_PAGES:.1f} p")
+m3.metric("진행도 ", f"{progress*100:.1f} %")
+m4.metric("남은 페이지 ", f"{max(TOTAL_PAGES - done_pages, 0.0):.1f} p")
 st.progress(progress)
 
-# 그래프 섹션
-st.write("")
 if not study_df.empty:
     g1, g2 = st.columns(2)
     with g1:
@@ -149,15 +187,17 @@ if not study_df.empty:
                           xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='#333333'))
         st.plotly_chart(fig2, use_container_width=True)
 
-st.markdown("<h2 class='chajjick-header'>🚨 CHAJJICK ZONE (채찍질 공간)</h2>", unsafe_allow_html=True)
+# --- [STEP 4] CHAJJICK ZONE ---
 
+st.markdown("<h2 class='chajjick-header'>🚨 CHAJJICK ZONE</h2>", unsafe_allow_html=True)
 c_log, c_whip = st.columns([1, 1])
 
 with c_log:
     st.write("### 📅 Study Log")
     if not study_df.empty:
         display_df = study_df.sort_values('Date', ascending=False)[['Date', 'Pages', 'Cumulative']].copy()
-        st.table(display_df)
+        # 테이블 수치 float 포맷팅
+        st.table(display_df.style.format({"Pages": "{:.1f}", "Cumulative": "{:.1f}"}))
 
 with c_whip:
     st.write("### 🧨 Deliver a Whip")
@@ -165,7 +205,11 @@ with c_whip:
         col_n, col_m = st.columns([1, 2])
         n_nick = col_n.text_input("채찍 주인 ", placeholder="이름")
         n_msg = col_m.text_input("채찍질 내용 ", placeholder=".")
+<<<<<<< HEAD
         if st.form_submit_button("💥 채찍 휘두르기 "):
+=======
+        if st.form_submit_button("💥"):
+>>>>>>> 599149c46aa56a54851bb2cb353d63836f2f94de
             if n_nick and n_msg:
                 new_data = pd.DataFrame({
                     "Date": [datetime.datetime.now().strftime("%Y-%m-%d %H:%M")],
