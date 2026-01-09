@@ -205,11 +205,7 @@ with c_whip:
         col_n, col_m = st.columns([1, 2])
         n_nick = col_n.text_input("채찍 주인 ", placeholder="이름")
         n_msg = col_m.text_input("채찍질 내용 ", placeholder=".")
-<<<<<<< HEAD
         if st.form_submit_button("💥 채찍 휘두르기 "):
-=======
-        if st.form_submit_button("💥"):
->>>>>>> 599149c46aa56a54851bb2cb353d63836f2f94de
             if n_nick and n_msg:
                 new_data = pd.DataFrame({
                     "Date": [datetime.datetime.now().strftime("%Y-%m-%d %H:%M")],
